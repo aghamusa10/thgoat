@@ -305,15 +305,21 @@ export function InGameScreen({
       {/* 2. TOP-CENTER: MENU / INFO BUTTON                                         */}
       {/* ========================================================================= */}
       <div className="absolute top-2.5 sm:top-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center pointer-events-auto select-none">
-        {/* Little circular menu / close / info button matching reference */}
+        {/* Stylized Information Button */}
         <button
           type="button"
           onClick={() => setIsRoomInfoOpen(true)}
           title="Room Details & Options"
           aria-label="Room details"
-          className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900/80 border border-slate-700/80 hover:border-slate-500 text-slate-400 hover:text-white flex items-center justify-center transition-all hover:scale-110 shadow-lg"
+          className="group relative flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#0c142b]/95 border-2 border-[#1e294b] hover:border-amber-400/80 text-amber-400 hover:text-amber-300 shadow-[0_4px_12px_rgba(0,0,0,0.8)] hover:shadow-[0_0_15px_rgba(245,158,11,0.4)] transition-all duration-300 hover:scale-110 active:scale-95 backdrop-blur-md"
         >
-          <X className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" />
+          {/* Subtle ambient aura on hover */}
+          <div className="absolute -inset-0.5 rounded-full bg-amber-500/20 blur-sm opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+
+          {/* Stylized 'i' icon */}
+          <span className="relative font-serif italic font-black text-xs sm:text-sm leading-none select-none text-amber-400 group-hover:text-amber-300 transition-colors drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] -translate-y-[0.5px]">
+            i
+          </span>
         </button>
       </div>
 
@@ -342,7 +348,7 @@ export function InGameScreen({
       </footer>
 
       {/* ========================================================================= */}
-      {/* 6. ROOM INFO & ADMIN MODAL (TRIGGERED VIA TOP-CENTER (X) BUTTON)           */}
+      {/* 6. ROOM INFO & ADMIN MODAL (TRIGGERED VIA TOP-CENTER (i) BUTTON)           */}
       {/* ========================================================================= */}
       {isRoomInfoOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
@@ -362,10 +368,6 @@ export function InGameScreen({
             </div>
 
             <div className="space-y-3 text-sm">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
-                <span className="text-slate-400 font-medium">Room Code</span>
-                <span className="font-mono font-black text-amber-400 text-lg">{roomCode}</span>
-              </div>
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <span className="text-slate-400 font-medium">Current Stage</span>
                 <span className="font-bold text-white">Stage {currentStageNumber} of 3</span>
