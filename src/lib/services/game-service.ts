@@ -577,6 +577,7 @@ export class GameService {
 
     if (allVoted) {
       targetMatchup.is_revealed = true;
+      room.updated_at = new Date().toISOString();
 
       const { result, playerScoreDeltas } = calculateMatchupResult(
         targetMatchup,
@@ -849,6 +850,7 @@ export class GameService {
         }
 
         activeMatchup.is_revealed = true;
+        room.updated_at = new Date().toISOString();
         const stageSubmissions = memoryStore.submissions.get(currentStage.id) || [];
         const stageVotes = memoryStore.votes.get(currentStage.id) || [];
 
@@ -1229,6 +1231,7 @@ export class GameService {
       stage_results: stageResults,
       final_leaderboard: finalLeaderboard,
       phase_started_at: room.updated_at,
+      server_time: new Date().toISOString(),
     };
   }
 

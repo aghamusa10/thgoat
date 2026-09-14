@@ -213,7 +213,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
   };
 
   const handleTimeout = async () => {
-    if (!sessionToken || !state?.current_stage) return;
+    if (!isHost || !sessionToken || !state?.current_stage) return;
     // Delay slightly to let active client drafts finish submitting
     setTimeout(async () => {
       try {
@@ -306,6 +306,7 @@ export default function RoomPage({ params }: { params: Promise<{ code: string }>
       isHost={isHost}
       currentMatchup={state.current_matchup}
       phaseStartedAt={state.phase_started_at}
+      serverTime={state.server_time}
       onTimeout={handleTimeout}
       onOpenAdmin={() => setIsAdminOpen(true)}
     >

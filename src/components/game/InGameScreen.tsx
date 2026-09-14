@@ -28,6 +28,7 @@ interface InGameScreenProps {
   isHost: boolean;
   currentMatchup?: CurrentMatchupInfo | null;
   phaseStartedAt?: string;
+  serverTime?: string;
   onTimeout?: () => void;
   onOpenAdmin?: () => void;
   children: React.ReactNode;
@@ -42,6 +43,7 @@ export function InGameScreen({
   isHost,
   currentMatchup,
   phaseStartedAt,
+  serverTime,
   onTimeout,
   onOpenAdmin,
   children,
@@ -49,21 +51,49 @@ export function InGameScreen({
   const ROUND_DURATION_SUBMITTING = 53;
   const ROUND_DURATION_VOTING = 30;
 
+  // Active countdown timer only runs in SUBMITTING and unrevealed VOTING matchups
+  const isTimerPhase = phase === 'SUBMITTING' || (phase === 'VOTING' && !currentMatchup?.is_revealed);
+
   const getTargetDuration = useCallback(() => {
     if (phase === 'SUBMITTING') return ROUND_DURATION_SUBMITTING;
     if (phase === 'VOTING' && !currentMatchup?.is_revealed) return ROUND_DURATION_VOTING;
     return 0;
   }, [phase, currentMatchup?.is_revealed]);
 
-  const getInitialTimeLeft = useCallback(() => {
+  // Synchronize client-server clock offset to eliminate device clock skew
+  const clockOffsetRef = React.useRef<number>(
+    serverTime && !isNaN(new Date(serverTime).getTime())
+      ? new Date(serverTime).getTime() - Date.now()
+      : 0
+  );
+  useEffect(() => {
+    if (serverTime) {
+      const serverMs = new Date(serverTime).getTime();
+      if (!isNaN(serverMs)) {
+        clockOffsetRef.current = serverMs - Date.now();
+      }
+    }
+  }, [serverTime]);
+
+  const getTimeLeft = useCallback(() => {
     const duration = getTargetDuration();
-    if (!phaseStartedAt || duration === 0) return duration;
-    const elapsed = Math.floor((Date.now() - new Date(phaseStartedAt).getTime()) / 1000);
-    return Math.max(0, duration - Math.max(0, elapsed));
-  }, [getTargetDuration, phaseStartedAt]);
+    if (!isTimerPhase || duration === 0) return 0;
+    if (!phaseStartedAt) return duration;
+
+    const startedMs = new Date(phaseStartedAt).getTime();
+    if (isNaN(startedMs)) return duration;
+
+    // Use synchronized server time to compute elapsed seconds
+    const currentServerTime = Date.now() + clockOffsetRef.current;
+    const elapsed = Math.floor((currentServerTime - startedMs) / 1000);
+
+    // If elapsed is negative (slight latency/client clock skew), return full duration
+    if (elapsed < 0) return duration;
+    return Math.max(0, duration - elapsed);
+  }, [getTargetDuration, phaseStartedAt, isTimerPhase]);
 
   // Timer countdown state
-  const [timeLeft, setTimeLeft] = useState<number>(() => getInitialTimeLeft());
+  const [timeLeft, setTimeLeft] = useState<number>(() => getTimeLeft());
   const [isMuted, setIsMuted] = useState<boolean>(() => soundManager.isSoundMuted());
   const [isRoomInfoOpen, setIsRoomInfoOpen] = useState(false);
   const [mobileRosterOpen, setMobileRosterOpen] = useState(false);
@@ -86,14 +116,14 @@ export function InGameScreen({
   // Sync / reset timer on matchup, phase, stage or phaseStartedAt change
   useEffect(() => {
     hasTimedOutRef.current = false;
-    const initial = getInitialTimeLeft();
+    const initial = getTimeLeft();
     setTimeLeft(initial);
     prevTimeLeftRef.current = initial;
-  }, [currentMatchup?.matchup_id, phase, currentStageNumber, phaseStartedAt, getInitialTimeLeft]);
+  }, [currentMatchup?.matchup_id, phase, currentStageNumber, phaseStartedAt, getTimeLeft]);
 
   // Tick down timer every second
   useEffect(() => {
-    if (currentMatchup?.is_revealed || phase === 'RESULTS' || phase === 'FINISHED') {
+    if (!isTimerPhase) {
       return;
     }
 
@@ -102,11 +132,11 @@ export function InGameScreen({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [currentMatchup?.is_revealed, phase]);
+  }, [isTimerPhase]);
 
   // Play ticking sound when time is almost up (last 10 seconds of round or stage)
   useEffect(() => {
-    if (currentMatchup?.is_revealed || phase === 'RESULTS' || phase === 'FINISHED') {
+    if (!isTimerPhase) {
       prevTimeLeftRef.current = timeLeft;
       return;
     }
@@ -119,17 +149,15 @@ export function InGameScreen({
       }
       prevTimeLeftRef.current = timeLeft;
     }
-  }, [timeLeft, phase, currentMatchup?.is_revealed]);
+  }, [timeLeft, isTimerPhase]);
 
-  // Fire onTimeout callback when timeLeft reaches 0
+  // Fire onTimeout callback when timeLeft reaches 0 during an active timer phase
   useEffect(() => {
-    if (timeLeft === 0 && !hasTimedOutRef.current) {
-      if (phase === 'SUBMITTING' || (phase === 'VOTING' && !currentMatchup?.is_revealed)) {
-        hasTimedOutRef.current = true;
-        onTimeout?.();
-      }
+    if (timeLeft === 0 && !hasTimedOutRef.current && isTimerPhase) {
+      hasTimedOutRef.current = true;
+      onTimeout?.();
     }
-  }, [timeLeft, phase, currentMatchup?.is_revealed, onTimeout]);
+  }, [timeLeft, isTimerPhase, onTimeout]);
 
   // Check if a player has completed their action in current phase
   const isPlayerActionDone = (player: PlayerSummary) => {
@@ -169,24 +197,36 @@ export function InGameScreen({
         </div>
 
         {/* Jackbox-style Dark Blob Timer Badge */}
-        <div className="relative group">
-          <div className="px-5 py-1.5 rounded-[22px] bg-[#0c142b]/95 border-2 border-[#1e294b] shadow-[0_10px_25px_rgba(0,0,0,0.8)] flex items-center justify-center space-x-2 backdrop-blur-md transition-all group-hover:border-amber-400/60">
-            <span
-              className={`text-2xl sm:text-3xl font-black font-mono tracking-wider transition-colors ${
-                timeLeft <= 10 ? 'text-rose-500 animate-pulse' : 'text-[#f59e0b]'
+        {isTimerPhase ? (
+          <div className="relative group">
+            <div className="px-5 py-1.5 rounded-[22px] bg-[#0c142b]/95 border-2 border-[#1e294b] shadow-[0_10px_25px_rgba(0,0,0,0.8)] flex items-center justify-center space-x-2 backdrop-blur-md transition-all group-hover:border-amber-400/60">
+              <span
+                className={`text-2xl sm:text-3xl font-black font-mono tracking-wider transition-colors ${
+                  timeLeft <= 10 ? 'text-rose-500 animate-pulse' : 'text-[#f59e0b]'
+                }`}
+              >
+                {timeLeft}
+              </span>
+              <span className="text-[10px] uppercase font-mono font-bold text-slate-400">SEC</span>
+            </div>
+            {/* Subtle timer glow */}
+            <div
+              className={`absolute -inset-1 rounded-[24px] blur-md -z-10 transition-opacity ${
+                timeLeft <= 10 ? 'bg-rose-500/40 opacity-100' : 'bg-amber-500/20 opacity-0 group-hover:opacity-100'
               }`}
-            >
-              {timeLeft}
-            </span>
-            <span className="text-[10px] uppercase font-mono font-bold text-slate-400">SEC</span>
+            />
           </div>
-          {/* Subtle timer glow */}
-          <div
-            className={`absolute -inset-1 rounded-[24px] blur-md -z-10 transition-opacity ${
-              timeLeft <= 10 ? 'bg-rose-500/40 opacity-100' : 'bg-amber-500/20 opacity-0 group-hover:opacity-100'
-            }`}
-          />
-        </div>
+        ) : (
+          <div className="px-4 py-1.5 rounded-[22px] bg-[#0c142b]/80 border border-[#1e294b] flex items-center space-x-1.5 text-xs font-mono font-bold">
+            {phase === 'RESULTS' ? (
+              <span className="text-emerald-400">ROUND OVER</span>
+            ) : phase === 'FINISHED' ? (
+              <span className="text-amber-400">FINAL SCORES</span>
+            ) : (
+              <span className="text-purple-400">VOTES IN</span>
+            )}
+          </div>
+        )}
 
         {/* Usernames List: displayed in the left side from up to down */}
         <div className="w-full pt-1">
@@ -274,15 +314,17 @@ export function InGameScreen({
             priority
           />
         </div>
-        <div
-          className={`px-2.5 py-1 rounded-xl bg-[#0c142b]/95 border flex items-center space-x-1 font-mono text-sm font-black transition-colors ${
-            timeLeft <= 10
-              ? 'text-rose-500 animate-pulse border-rose-500/60 shadow-[0_0_10px_rgba(244,63,94,0.4)]'
-              : 'border-[#1e294b] text-[#f59e0b]'
-          }`}
-        >
-          <span>{timeLeft}s</span>
-        </div>
+        {isTimerPhase && (
+          <div
+            className={`px-2.5 py-1 rounded-xl bg-[#0c142b]/95 border flex items-center space-x-1 font-mono text-sm font-black transition-colors ${
+              timeLeft <= 10
+                ? 'text-rose-500 animate-pulse border-rose-500/60 shadow-[0_0_10px_rgba(244,63,94,0.4)]'
+                : 'border-[#1e294b] text-[#f59e0b]'
+            }`}
+          >
+            <span>{timeLeft}s</span>
+          </div>
+        )}
       </div>
 
       {/* Mobile/Tablet Player Drawer Toggle Button */}
@@ -378,7 +420,7 @@ export function InGameScreen({
       {/* 4. CENTER STAGE: MAIN GAMEPLAY CONTENT                                     */}
       {/* ========================================================================= */}
       <main className="relative z-10 flex-1 flex flex-col items-center justify-center w-full px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 pb-20 sm:pb-24 max-w-7xl mx-auto">
-        <GameTimerContext.Provider value={{ timeLeft, isTimeUp: timeLeft <= 0 }}>
+        <GameTimerContext.Provider value={{ timeLeft, isTimeUp: isTimerPhase && timeLeft <= 0 }}>
           {children}
         </GameTimerContext.Provider>
       </main>

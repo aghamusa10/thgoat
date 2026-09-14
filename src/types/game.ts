@@ -215,6 +215,7 @@ export interface RoomState {
   stage_results: StageResultItem[];
   final_leaderboard: LeaderboardEntry[];
   phase_started_at?: string;
+  server_time?: string;
 }
 
 export type RealtimeEventPayload =
