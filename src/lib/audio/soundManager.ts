@@ -1,11 +1,15 @@
 /**
- * Sound Manager for procedural audio synthesis via Web Audio API.
+ * Sound Manager for procedural audio synthesis and audio asset playback.
  * Provides clock ticks and time-up cues for game rounds and stages.
  */
+
+const TICK_SOUND_URL = '/sounds/1%20second%20tick%20(1).mp3';
 
 export class SoundManager {
   private ctx: AudioContext | null = null;
   private isMuted: boolean = false;
+  private tickAudioBuffer: AudioBuffer | null = null;
+  private isLoadingBuffer: boolean = false;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -18,6 +22,7 @@ export class SoundManager {
         // Ignore localStorage restrictions
       }
       this.initUserGestureUnlock();
+      this.preloadTickAudio().catch(() => {});
     }
   }
 
@@ -62,6 +67,43 @@ export class SoundManager {
     if (ctx && ctx.state === 'suspended') {
       ctx.resume().catch(() => {});
     }
+    this.preloadTickAudio().catch(() => {});
+  }
+
+  public async preloadTickAudio(): Promise<void> {
+    if (
+      typeof window === 'undefined' ||
+      typeof window.fetch !== 'function' ||
+      this.tickAudioBuffer ||
+      this.isLoadingBuffer
+    ) {
+      return;
+    }
+
+    const ctx = this.getAudioContext();
+    if (!ctx) return;
+
+    this.isLoadingBuffer = true;
+    try {
+      const soundUrl = window.location?.origin
+        ? `${window.location.origin}${TICK_SOUND_URL}`
+        : TICK_SOUND_URL;
+      const res = await fetch(soundUrl);
+      if (!res.ok) return;
+
+      const arrayBuffer = await res.arrayBuffer();
+      const decodedBuffer = await new Promise<AudioBuffer>((resolve, reject) => {
+        const promise = ctx.decodeAudioData(arrayBuffer, resolve, reject);
+        if (promise && typeof promise.then === 'function') {
+          promise.then(resolve, reject);
+        }
+      });
+      this.tickAudioBuffer = decodedBuffer;
+    } catch {
+      // Preload fallback handled at runtime
+    } finally {
+      this.isLoadingBuffer = false;
+    }
   }
 
   public isSoundMuted(): boolean {
@@ -90,80 +132,41 @@ export class SoundManager {
   }
 
   /**
-   * Play a clock tick sound.
+   * Play the clock tick sound using the user's 1 second tick audio asset.
    * @param timeLeft Seconds remaining on the clock.
    */
   public playTick(timeLeft: number) {
     if (this.isMuted) return;
+
     const ctx = this.getAudioContext();
-    if (!ctx) {
-      this.playAudioFallback(
-        timeLeft <= 5
-          ? '/sounds/tick-urgent.wav'
-          : timeLeft % 2 === 1
-          ? '/sounds/tock.wav'
-          : '/sounds/tick.wav'
-      );
-      return;
-    }
+    const isUrgent = timeLeft <= 5;
+    const isTock = timeLeft % 2 === 1;
+    // Apply subtle rhythmic variation between odd/even seconds and urgency
+    const playbackRate = isUrgent ? 1.15 : isTock ? 0.96 : 1.0;
 
-    try {
-      const now = ctx.currentTime;
-      const isUrgent = timeLeft <= 5;
-      const isTock = timeLeft % 2 === 1;
+    if (ctx && this.tickAudioBuffer) {
+      try {
+        const source = ctx.createBufferSource();
+        source.buffer = this.tickAudioBuffer;
+        source.playbackRate.setValueAtTime(playbackRate, ctx.currentTime);
 
-      // 1. Transient click (filtered noise burst for clock mechanical escapement tick)
-      const bufferSize = Math.floor(ctx.sampleRate * 0.02); // 20ms
-      const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-      const data = noiseBuffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) {
-        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.25));
+        const gainNode = ctx.createGain();
+        gainNode.gain.setValueAtTime(isUrgent ? 0.9 : 0.75, ctx.currentTime);
+
+        source.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        source.start(0);
+        return;
+      } catch {
+        // Fall back to HTML Audio if Web Audio node playback fails
       }
-
-      const noiseSource = ctx.createBufferSource();
-      noiseSource.buffer = noiseBuffer;
-
-      const noiseFilter = ctx.createBiquadFilter();
-      noiseFilter.type = 'bandpass';
-      noiseFilter.frequency.setValueAtTime(isUrgent ? 3400 : isTock ? 2300 : 2800, now);
-      noiseFilter.Q.setValueAtTime(3.5, now);
-
-      const noiseGain = ctx.createGain();
-      noiseGain.gain.setValueAtTime(isUrgent ? 0.35 : 0.22, now);
-      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.02);
-
-      noiseSource.connect(noiseFilter);
-      noiseFilter.connect(noiseGain);
-      noiseGain.connect(ctx.destination);
-
-      // 2. Resonant body ping (woodblock / mechanical gear pop)
-      const osc = ctx.createOscillator();
-      const oscGain = ctx.createGain();
-
-      const startFreq = isUrgent
-        ? isTock
-          ? 1250
-          : 1500
-        : isTock
-        ? 850
-        : 1050;
-
-      osc.type = isUrgent ? 'triangle' : 'sine';
-      osc.frequency.setValueAtTime(startFreq, now);
-      osc.frequency.exponentialRampToValueAtTime(Math.max(100, startFreq * 0.3), now + 0.035);
-
-      oscGain.gain.setValueAtTime(isUrgent ? 0.35 : 0.22, now);
-      oscGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
-
-      osc.connect(oscGain);
-      oscGain.connect(ctx.destination);
-
-      noiseSource.start(now);
-      osc.start(now);
-      osc.stop(now + 0.045);
-    } catch {
-      this.playAudioFallback(timeLeft <= 5 ? '/sounds/tick-urgent.wav' : '/sounds/tick.wav');
     }
+
+    if (!this.tickAudioBuffer && !this.isLoadingBuffer) {
+      this.preloadTickAudio().catch(() => {});
+    }
+
+    this.playAudioFallback(TICK_SOUND_URL, playbackRate);
   }
 
   /**
@@ -172,10 +175,7 @@ export class SoundManager {
   public playTimeUp() {
     if (this.isMuted) return;
     const ctx = this.getAudioContext();
-    if (!ctx) {
-      this.playAudioFallback('/sounds/timeup.wav');
-      return;
-    }
+    if (!ctx) return;
 
     try {
       const now = ctx.currentTime;
@@ -212,16 +212,17 @@ export class SoundManager {
       osc1.stop(now + 0.55);
       osc2.stop(now + 0.55);
     } catch {
-      this.playAudioFallback('/sounds/timeup.wav');
+      // Ignore audio synthesis errors
     }
   }
 
-  private playAudioFallback(src: string) {
+  private playAudioFallback(src: string, playbackRate: number = 1.0) {
     if (typeof window === 'undefined' || typeof Audio === 'undefined') return;
     if (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.includes('jsdom')) return;
     try {
       const audio = new Audio(src);
-      audio.volume = 0.5;
+      audio.volume = 0.75;
+      audio.playbackRate = playbackRate;
       const playPromise = audio.play();
       if (playPromise && typeof playPromise.catch === 'function') {
         playPromise.catch(() => {});
