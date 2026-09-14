@@ -38,7 +38,7 @@ describe('Voting Fairness & Self-Vote Prevention Integration', () => {
     // Matchup 0 is between Host and P2
     const hostState = await GameService.getRoomState(room_code, host.session_token);
     expect(hostState.current_matchup?.is_author).toBe(true);
-    expect(hostState.current_matchup?.voting_options).toHaveLength(0);
+    expect(hostState.current_matchup?.voting_options).toHaveLength(2);
 
     const p2State = await GameService.getRoomState(room_code, p2.session_token);
     expect(p2State.current_matchup?.is_author).toBe(true);

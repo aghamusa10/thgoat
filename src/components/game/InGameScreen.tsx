@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { GamePhase, PlayerSummary, CurrentPlayer, CurrentMatchupInfo } from '@/types/game';
 import { GameMascot, getMascotForPlayer } from './GameMascot';
-import { Check, X, Shield, Crown, Sparkles, Users } from 'lucide-react';
+import { Check, X, Shield, Crown, Sparkles, Users, Volume2, VolumeX } from 'lucide-react';
+import { soundManager } from '@/lib/audio/soundManager';
 
 interface GameTimerContextType {
   timeLeft: number;
@@ -48,24 +49,31 @@ export function InGameScreen({
   const ROUND_DURATION_SUBMITTING = 53;
   const ROUND_DURATION_VOTING = 30;
 
-  const getTargetDuration = () => {
+  const getTargetDuration = useCallback(() => {
     if (phase === 'SUBMITTING') return ROUND_DURATION_SUBMITTING;
     if (phase === 'VOTING' && !currentMatchup?.is_revealed) return ROUND_DURATION_VOTING;
     return 0;
-  };
+  }, [phase, currentMatchup?.is_revealed]);
 
-  const getInitialTimeLeft = () => {
+  const getInitialTimeLeft = useCallback(() => {
     const duration = getTargetDuration();
     if (!phaseStartedAt || duration === 0) return duration;
     const elapsed = Math.floor((Date.now() - new Date(phaseStartedAt).getTime()) / 1000);
     return Math.max(0, duration - Math.max(0, elapsed));
-  };
+  }, [getTargetDuration, phaseStartedAt]);
 
   // Timer countdown state
   const [timeLeft, setTimeLeft] = useState<number>(() => getInitialTimeLeft());
+  const [isMuted, setIsMuted] = useState<boolean>(() => soundManager.isSoundMuted());
   const [isRoomInfoOpen, setIsRoomInfoOpen] = useState(false);
   const [mobileRosterOpen, setMobileRosterOpen] = useState(false);
   const hasTimedOutRef = React.useRef(false);
+  const prevTimeLeftRef = React.useRef<number>(timeLeft);
+
+  const handleToggleSound = () => {
+    const newMuted = soundManager.toggleMute();
+    setIsMuted(newMuted);
+  };
 
   // Select round image based on current stage number (defaulting to round1 for 1, round2 for 2, round3 for 3)
   const roundImgSrc =
@@ -80,7 +88,8 @@ export function InGameScreen({
     hasTimedOutRef.current = false;
     const initial = getInitialTimeLeft();
     setTimeLeft(initial);
-  }, [currentMatchup?.matchup_id, phase, currentStageNumber, phaseStartedAt]);
+    prevTimeLeftRef.current = initial;
+  }, [currentMatchup?.matchup_id, phase, currentStageNumber, phaseStartedAt, getInitialTimeLeft]);
 
   // Tick down timer every second
   useEffect(() => {
@@ -94,6 +103,23 @@ export function InGameScreen({
 
     return () => clearInterval(timer);
   }, [currentMatchup?.is_revealed, phase]);
+
+  // Play ticking sound when time is almost up (last 10 seconds of round or stage)
+  useEffect(() => {
+    if (currentMatchup?.is_revealed || phase === 'RESULTS' || phase === 'FINISHED') {
+      prevTimeLeftRef.current = timeLeft;
+      return;
+    }
+
+    if (prevTimeLeftRef.current !== timeLeft) {
+      if (timeLeft <= 10 && timeLeft > 0) {
+        soundManager.playTick(timeLeft);
+      } else if (timeLeft === 0 && prevTimeLeftRef.current > 0) {
+        soundManager.playTimeUp();
+      }
+      prevTimeLeftRef.current = timeLeft;
+    }
+  }, [timeLeft, phase, currentMatchup?.is_revealed]);
 
   // Fire onTimeout callback when timeLeft reaches 0
   useEffect(() => {
@@ -248,7 +274,13 @@ export function InGameScreen({
             priority
           />
         </div>
-        <div className="px-2.5 py-1 rounded-xl bg-[#0c142b]/95 border border-[#1e294b] flex items-center space-x-1 font-mono text-sm font-black text-[#f59e0b]">
+        <div
+          className={`px-2.5 py-1 rounded-xl bg-[#0c142b]/95 border flex items-center space-x-1 font-mono text-sm font-black transition-colors ${
+            timeLeft <= 10
+              ? 'text-rose-500 animate-pulse border-rose-500/60 shadow-[0_0_10px_rgba(244,63,94,0.4)]'
+              : 'border-[#1e294b] text-[#f59e0b]'
+          }`}
+        >
           <span>{timeLeft}s</span>
         </div>
       </div>
@@ -302,9 +334,28 @@ export function InGameScreen({
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. TOP-CENTER: MENU / INFO BUTTON                                         */}
+      {/* 2. TOP-CENTER: MENU / INFO BUTTON & SOUND TOGGLE                          */}
       {/* ========================================================================= */}
-      <div className="absolute top-2.5 sm:top-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center pointer-events-auto select-none">
+      <div className="absolute top-2.5 sm:top-4 left-1/2 -translate-x-1/2 z-30 flex items-center space-x-2 pointer-events-auto select-none">
+        {/* Sound Mute / Unmute Button */}
+        <button
+          type="button"
+          onClick={handleToggleSound}
+          title={isMuted ? 'Unmute Game Sounds' : 'Mute Game Sounds'}
+          aria-label={isMuted ? 'Unmute Game Sounds' : 'Mute Game Sounds'}
+          className={`group relative flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#0c142b]/95 border-2 transition-all duration-300 hover:scale-110 active:scale-95 backdrop-blur-md shadow-[0_4px_12px_rgba(0,0,0,0.8)] ${
+            isMuted
+              ? 'border-slate-700 text-slate-500 hover:text-slate-300 hover:border-slate-500'
+              : 'border-[#1e294b] hover:border-amber-400/80 text-amber-400 hover:text-amber-300 hover:shadow-[0_0_15px_rgba(245,158,11,0.4)]'
+          }`}
+        >
+          {isMuted ? (
+            <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />
+          ) : (
+            <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400 group-hover:text-amber-300" />
+          )}
+        </button>
+
         {/* Stylized Information Button */}
         <button
           type="button"
@@ -375,6 +426,21 @@ export function InGameScreen({
               <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
                 <span className="text-slate-400 font-medium">Players Connected</span>
                 <span className="font-bold text-emerald-400">{players.length} Players</span>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
+                <span className="text-slate-400 font-medium">Sound Effects</span>
+                <button
+                  type="button"
+                  onClick={handleToggleSound}
+                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    isMuted
+                      ? 'bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700'
+                      : 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30'
+                  }`}
+                >
+                  {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5 text-amber-400" />}
+                  <span>{isMuted ? 'Muted' : 'Ticking Sound On'}</span>
+                </button>
               </div>
             </div>
 

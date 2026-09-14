@@ -3,8 +3,9 @@
 import React from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Crown, Users } from 'lucide-react';
+import { Crown, Users, Volume2, VolumeX } from 'lucide-react';
 import { GamePhase } from '@/types/game';
+import { soundManager } from '@/lib/audio/soundManager';
 
 interface GameHeaderProps {
   roomCode: string;
@@ -23,6 +24,12 @@ export function GameHeader({
   myNickname,
   isHost = false,
 }: GameHeaderProps) {
+  const [isMuted, setIsMuted] = React.useState<boolean>(() => soundManager.isSoundMuted());
+
+  const handleToggleSound = () => {
+    const newMuted = soundManager.toggleMute();
+    setIsMuted(newMuted);
+  };
   const getPhaseBadge = () => {
     switch (phase) {
       case 'LOBBY':
@@ -69,8 +76,22 @@ export function GameHeader({
         {/* Center: Phase Badge */}
         <div className="flex items-center">{getPhaseBadge()}</div>
 
-        {/* Right: Player Profile Pill */}
-        <div className="flex items-center space-x-3">
+        {/* Right: Player Profile Pill & Sound Toggle */}
+        <div className="flex items-center space-x-2 sm:space-x-3">
+          <button
+            type="button"
+            onClick={handleToggleSound}
+            title={isMuted ? 'Unmute Game Sounds' : 'Mute Game Sounds'}
+            aria-label={isMuted ? 'Unmute Game Sounds' : 'Mute Game Sounds'}
+            className={`flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900 border transition-all duration-200 hover:scale-110 active:scale-95 shadow-sm ${
+              isMuted
+                ? 'border-slate-800 text-slate-500 hover:text-slate-300 hover:border-slate-600'
+                : 'border-slate-700 text-amber-400 hover:text-amber-300 hover:border-amber-400/50'
+            }`}
+          >
+            {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+          </button>
+
           <div className="flex items-center space-x-1 text-xs text-slate-400">
             <Users className="w-3.5 h-3.5" />
             <span>{playerCount}</span>
