@@ -144,8 +144,6 @@ export function InGameScreen({
     if (prevTimeLeftRef.current !== timeLeft) {
       if (timeLeft <= 10 && timeLeft > 0) {
         soundManager.playTick(timeLeft);
-      } else if (timeLeft === 0 && prevTimeLeftRef.current > 0) {
-        soundManager.playTimeUp();
       }
       prevTimeLeftRef.current = timeLeft;
     }

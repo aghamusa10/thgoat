@@ -74,7 +74,7 @@ describe('InGameScreen ticking sound countdown', () => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(playTimeUpSpy).toHaveBeenCalled();
+    expect(playTimeUpSpy).not.toHaveBeenCalled();
   });
 
   it('allows toggling mute via the sound control button', () => {

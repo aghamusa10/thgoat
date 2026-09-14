@@ -170,50 +170,10 @@ export class SoundManager {
   }
 
   /**
-   * Play buzzer / chime sound when time is up.
+   * Sound when time is up (removed).
    */
   public playTimeUp() {
-    if (this.isMuted) return;
-    const ctx = this.getAudioContext();
-    if (!ctx) return;
-
-    try {
-      const now = ctx.currentTime;
-
-      const osc1 = ctx.createOscillator();
-      const osc2 = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const filter = ctx.createBiquadFilter();
-
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(1400, now);
-      filter.frequency.exponentialRampToValueAtTime(400, now + 0.5);
-
-      osc1.type = 'sawtooth';
-      osc2.type = 'triangle';
-
-      osc1.frequency.setValueAtTime(320, now);
-      osc1.frequency.setValueAtTime(220, now + 0.2);
-
-      osc2.frequency.setValueAtTime(480, now);
-      osc2.frequency.setValueAtTime(330, now + 0.2);
-
-      gain.gain.setValueAtTime(0.28, now);
-      gain.gain.setValueAtTime(0.28, now + 0.2);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
-
-      osc1.connect(filter);
-      osc2.connect(filter);
-      filter.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc1.start(now);
-      osc2.start(now);
-      osc1.stop(now + 0.55);
-      osc2.stop(now + 0.55);
-    } catch {
-      // Ignore audio synthesis errors
-    }
+    // Intentionally left blank: time is up sound removed
   }
 
   private playAudioFallback(src: string, playbackRate: number = 1.0) {
